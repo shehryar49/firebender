@@ -1079,7 +1079,16 @@ if(tokens[0].type==TokenType::KEYWORD_TOKEN && tokens[0].content=="class")
     string fnprefix = prefixes.back();
 
     if(atGlobalLevel())
+    {
         tokens[1].content = fnprefix+tokens[1].content;
+        if(globals.find(tokens[1].content) !=globals.end())
+        {
+            delete ast;
+            delete n;
+            return minorError("NameError","Name "+tokens[1].content+" redefined!");
+        }
+        globals.emplace(tokens[1].content,ast);
+    }
     ast->childs.push_back(NewNode(NodeType::ID,tokens[1].content));
     if(extendedClass)
     {
@@ -1337,7 +1346,27 @@ if(tokens[0].type== TokenType::KEYWORD_TOKEN && tokens[0].content=="function")
         tokens[1].content = fnprefix+tokens[1].content;
     if(isPrivate)
         tokens[1].content = "@" + tokens[1].content;
+
     Node* ast = NewNode(NodeType::FUNC);
+    if(atGlobalLevel())
+    {
+        if(globals.find(tokens[1].content) != globals.end())
+        {
+          delete ast;
+          return minorError("NameError","Name "+tokens[1].content+" redefined!");
+        }
+        globals.emplace(tokens[1].content,ast);
+    }
+    else 
+    {
+        if(locals.back().find(tokens[1].content)!=locals.back().begin())
+        {
+            delete ast;
+            return minorError("NameError","Name "+tokens[1].content+" redefined!");
+        }  
+        locals.back().emplace(tokens[1].content,ast);
+    }
+    
     Node* n = NewNode(NodeType::line,to_string(tokens[0].ln));
     ast->childs.push_back(n);
     ast->childs.push_back(NewNode(NodeType::ID,tokens[1].content));
@@ -1419,8 +1448,8 @@ if(tokens[0].type== TokenType::KEYWORD_TOKEN && tokens[0].content=="function")
     }
     return ast;
 }
-int k=0;
-while(k<(int)tokens.size())
+    int k=0;
+    while(k<(int)tokens.size())
     {
         if(tokens[k].type!= TokenType::OP_TOKEN)
         {
@@ -1551,7 +1580,7 @@ while(k>=0)
     }
     k-=1;
 }
-    return minorError("SyntaxError","Unknown statement");
+return minorError("SyntaxError","Unknown statement");
 
 }
 
@@ -1982,7 +2011,9 @@ Node* Parser::parse(const vector<Token>& tokens)
                     refGraph->emplace(ast->childs[1]->val,vector<string>{});
                 }
                 infunc = true;
+                locals.push_back(SymbolTable());
                 ast->childs.push_back(parse(block));
+                locals.pop_back();
                 infunc = false;
                 if(!inclass)
                     currSym = aux;
@@ -2032,10 +2063,12 @@ Node* Parser::parse(const vector<Token>& tokens)
                 string aux = currSym;
                 currSym = ast->childs[1]->val;
                 refGraph->emplace(ast->childs[1]->val,vector<string>{});
+                locals.push_back(SymbolTable());
                 if(ast->val=="class")
                     ast->childs.push_back(parse(block));
                 else
                     ast->childs.insert(ast->childs.begin()+2,parse(block));
+                locals.pop_back();
                 //backtrack
                 //important: change if planning to support nested classes
                 inclass = false;
@@ -2138,7 +2171,9 @@ Node* Parser::parse(const vector<Token>& tokens)
                 block.push_back(newlinetok);
                 bool b = inloop;
                 inloop = true;
+                locals.push_back(SymbolTable());
                 ast->childs.push_back(parse(block));//inwhile = true
+                locals.pop_back();
                 inloop = b;
                 if(start==0)
                 {
@@ -2235,11 +2270,16 @@ Node* Parser::parse(const vector<Token>& tokens)
                 ast->childs.push_back(NewNode(NodeType::ID,catchId));
                 bool ctxCopy = intry;
                 intry = true;
+                locals.push_back(SymbolTable());
                 ast->childs.push_back(parse(block));
+                locals.pop_back();
                 intry = ctxCopy;
                 ctxCopy = incatch;
                 incatch = true;
+                locals.push_back(SymbolTable());
+                locals.back().emplace(catchId,ast);
                 ast->childs.push_back(parse(catchBlock));
+                locals.pop_back();
                 incatch = ctxCopy;
                 if(start==0)
                 {
