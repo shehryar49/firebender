@@ -315,6 +315,8 @@ void Parser::init(string fname,ProgramInfo& p)
     incatch = false;
     foundYield = false;
     minors.clear();
+    globals.clear();
+    locals.clear();
 }
 void Parser::parseError(string type,string msg)
 {
@@ -833,7 +835,18 @@ Node* Parser::parseExpr(const vector<Token>& tokens)
         return minorError("SyntaxError","Expression spans over multiple lines");  
     return ast;
 }
-
+Node* Parser::findLocal(const string& name)
+{
+  auto it = locals.rbegin();
+  while(it != locals.rend())
+  {
+    auto i = (*it).find(name);
+    if(i != (*it).end())
+      return (*i).second;
+    it++;
+  }
+  return nullptr;
+}
 Node* Parser::parseStmt(vector<Token> tokens)
 {
     if(tokens.size() == 1 && (tokens[0].type == L_CURLY_BRACKET_TOKEN || tokens[0].type == R_CURLY_BRACKET_TOKEN))
@@ -894,17 +907,35 @@ if(tokens[0].type== TokenType::KEYWORD_TOKEN  && tokens[0].content=="var")
     {
         return minorError("SyntaxError","invalid declare statement!");
     }
-    Node* ast = NewNode(NodeType::declare);
-    Node* n = NewNode(NodeType::line,to_string(tokens[0].ln));
-    ast->childs.push_back(n);
+
     if(tokens[1].content.find("::")!=string::npos)
         return minorError("SyntaxError","Invalid Syntax");
     string fnprefix = prefixes.back();
-    if(atGlobalLevel())
-        tokens[1].content = fnprefix+tokens[1].content;
+    bool addglobal = false;
     if(isPrivate)
         tokens[1].content = "@"+tokens[1].content;
+    if(atGlobalLevel())
+    {
+        tokens[1].content = fnprefix+tokens[1].content;
+        if(globals.find(tokens[1].content) != globals.end())
+            return minorError("NameError","Name "+ tokens[1].content+" redefined!");
+        else
+          addglobal = true;
+    }
+    else 
+    {
+        if(locals.back().find(tokens[1].content) != locals.back().end())
+            return minorError("NameError","Name "+ tokens[1].content+" redefined!");
+    }
     //ast->childs.push_back(NewNode(NodeType::ID,tokens[1].content));
+    Node* ast = NewNode(NodeType::declare);
+
+    if(addglobal)
+      globals.emplace(tokens[1].content,ast);
+    else
+      locals.back().emplace(tokens[1].content,ast);
+    Node* n = NewNode(NodeType::line,to_string(tokens[0].ln));
+    ast->childs.push_back(n);
     ast->val = tokens[1].content;
     vector<Token> expr = {tokens.begin()+3,tokens.end()};
     if(expr[0].type==KEYWORD_TOKEN && expr[0].content == "yield")
@@ -1623,8 +1654,15 @@ Node* Parser::parse(const vector<Token>& tokens)
                 int j = findTokenConsecutive(bgscope,start+line.size(),tokens);
                 int i;
                 if(j!=-1)
+                {
                     i = findRCB(j,tokens);
-                if(j==-1)
+                    if(i == -1)
+                    {
+                      line_num = tokens[j].ln;
+                      parseError("SyntaxError","Error expected '}' to match this.");
+                    }
+                }
+                else
                 {
                     j = findTokenConsecutive(newlinetok,start+line.size(),tokens);
                     i = findToken(newlinetok,j+1,tokens);
@@ -1701,66 +1739,73 @@ Node* Parser::parse(const vector<Token>& tokens)
                 }
                 if(foundelif && foundElse)
                 {
-                ast->type = NodeType::IFELIFELSE;
-                vector<Token> elseBlock = {tokens.begin()+j+1,tokens.begin()+i};
-                if(elseBlock.size()==1 && elseBlock[0].type==KEYWORD_TOKEN && (elseBlock[0].content=="endfor" || elseBlock[0].content=="endwhile" || elseBlock[0].content=="endnm" || elseBlock[0].content=="endclass" || elseBlock[0].content=="endfunc" || elseBlock[0].content=="endelse" || elseBlock[0].content=="endelif" ||  elseBlock[0].content=="endif"))
-                {
-                    parseError("SyntaxError","Error use brackets {} after else!");
-                }
-                stripNewlines(elseBlock);
-                for(int a=0;a<(int)elifConditions.size();a++)
-                {
-                    line_num = elifConditions[a][0].ln;   
-                    ast->childs[1]->childs.push_back(parseExpr(elifConditions[a]));
-                }
-
-                Token t;
-                t.content = "endif";
-                t.type=KEYWORD_TOKEN;
-                if(block.size()!=0)
+                    ast->type = NodeType::IFELIFELSE;
+                    vector<Token> elseBlock = {tokens.begin()+j+1,tokens.begin()+i};
+                    if(elseBlock.size()==1 && elseBlock[0].type==KEYWORD_TOKEN && (elseBlock[0].content=="endfor" || elseBlock[0].content=="endwhile" || elseBlock[0].content=="endnm" || elseBlock[0].content=="endclass" || elseBlock[0].content=="endfunc" || elseBlock[0].content=="endelse" || elseBlock[0].content=="endelif" ||  elseBlock[0].content=="endif"))
+                    {
+                        parseError("SyntaxError","Error use brackets {} after else!");
+                    }
+                    stripNewlines(elseBlock);
+                    for(int a=0;a<(int)elifConditions.size();a++)
+                    {
+                        line_num = elifConditions[a][0].ln;   
+                        ast->childs[1]->childs.push_back(parseExpr(elifConditions[a]));
+                    }
+                    Token t;
+                    t.content = "endif";
+                    t.type=KEYWORD_TOKEN;
+                    if(block.size()!=0)
+                        block.push_back(newlinetok);
+                    block.push_back(t);
                     block.push_back(newlinetok);
-                block.push_back(t);
-                block.push_back(newlinetok);
-                if(elseBlock.size()!=0)
+                    if(elseBlock.size()!=0)
+                        elseBlock.push_back(newlinetok);
+                    t.content = "endelse";
+                    elseBlock.push_back(t);
                     elseBlock.push_back(newlinetok);
-                t.content = "endelse";
-                elseBlock.push_back(t);
-                elseBlock.push_back(newlinetok);
-                bool ctxCopy = inif;
-                inif = true;
-                ast->childs.push_back(parse(block));
-                inif = ctxCopy;
-                t.content = "endelif";
-                for(int a=0;a<(int)elifBlocks.size();a++)
-                {
-                    vector<Token> elifBlock = elifBlocks[a];
-                    stripNewlines(elifBlock);
-                    if(elifBlock.size()!=0)
+                    bool ctxCopy = inif;
+                    inif = true;
+                    auto localsCopy = locals;
+                    locals.push_back(SymbolTable());
+                    ast->childs.push_back(parse(block));
+                    locals.pop_back();
+                    locals = localsCopy;
+                    inif = ctxCopy;
+                    t.content = "endelif";
+                    for(int a=0;a<(int)elifBlocks.size();a++)
+                    {
+                        vector<Token> elifBlock = elifBlocks[a];
+                        stripNewlines(elifBlock);
+                        if(elifBlock.size()!=0)
+                            elifBlock.push_back(newlinetok);
+                        elifBlock.push_back(t);
                         elifBlock.push_back(newlinetok);
-                    elifBlock.push_back(t);
-                    elifBlock.push_back(newlinetok);
-                    bool ctxCopy = inelif;
-                    inelif = true;
-                    Node* n = parse(elifBlock);
-                    inelif = ctxCopy;
-                    ast->childs.push_back(n);
-                }
-                ctxCopy = inelse;
-                inelse = true;
-                ast->childs.push_back(parse(elseBlock));
-                inelse = ctxCopy;
-                if(start==0)
-                {
-                    Final = ast;
-                    e = ast;
-                }
-                else
-                {
-                    e->childs.push_back(ast);
-                    e = e->childs.back();
-                }
-                start=i+1;
-                k = i;
+                        bool ctxCopy = inelif;
+                        inelif = true;
+                        locals.push_back(SymbolTable());
+                        Node* n = parse(elifBlock);
+                        locals.pop_back();
+                        inelif = ctxCopy;
+                        ast->childs.push_back(n);
+                    }
+                    ctxCopy = inelse;
+                    inelse = true;
+                    locals.push_back(SymbolTable());
+                    ast->childs.push_back(parse(elseBlock));
+                    locals.pop_back();
+                    inelse = ctxCopy;
+                    if(start==0)
+                    {
+                        Final = ast;
+                        e = ast;
+                    }
+                    else
+                    {
+                        e->childs.push_back(ast);
+                        e = e->childs.back();
+                    }
+                    start=i+1;
+                    k = i;
                 }
                 else if(foundelif && !foundElse)
                 {
@@ -1779,7 +1824,9 @@ Node* Parser::parse(const vector<Token>& tokens)
                 block.push_back(newlinetok);
                 bool ctxCopy = inif;
                 inif = true;
+                locals.push_back(SymbolTable());
                 ast->childs.push_back(parse(block));
+                locals.pop_back();
                 inif = ctxCopy;
                 t.content = "endelif";
                 for(int a=0;a<(int)elifBlocks.size();a++)
@@ -1792,7 +1839,9 @@ Node* Parser::parse(const vector<Token>& tokens)
                     elifBlock.push_back(newlinetok);
                     bool ctxCopy = inelif;
                     inelif = true;
+                    locals.push_back(SymbolTable());
                     Node* n = parse(elifBlock);
+                    locals.pop_back();
                     inelif = ctxCopy;
                     ast->childs.push_back(n);
                 }
@@ -1828,11 +1877,15 @@ Node* Parser::parse(const vector<Token>& tokens)
                 elseBlock.push_back(newlinetok);
                 bool ctxCopy = inif;
                 inif = true;
+                locals.push_back(SymbolTable());
                 ast->childs.push_back(parse(block));
+                locals.pop_back();
                 inif = ctxCopy;
                 ctxCopy = inelse;
                 inelse = true;
+                locals.push_back(SymbolTable());
                 ast->childs.push_back(parse(elseBlock));
+                locals.pop_back();
                 inelse = ctxCopy;
                 if(start==0)
                 {
@@ -1859,17 +1912,20 @@ Node* Parser::parse(const vector<Token>& tokens)
                     block.push_back(newlinetok);
                     bool ctxCopy = inif;
                     inif = true;
+                    locals.push_back(SymbolTable());
                     ast->childs.push_back(parse(block));
+                    locals.pop_back();
+
                     inif = ctxCopy;
                     if(start==0)
                     {
-                    Final = ast;
-                    e = ast;
+                        Final = ast;
+                        e = ast;
                     }
                     else
                     {
-                    e->childs.push_back(ast);
-                    e = e->childs.back();
+                        e->childs.push_back(ast);
+                        e = e->childs.back();
                     }
                     start=i+1;
                     k = i;

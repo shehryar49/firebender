@@ -93,13 +93,16 @@ public:
     this->filename = filename;
   }
 };
+#define SymbolTable std::unordered_map<string,Node*>
 class Parser
 {
 private:
   vector<Token> known_constants;
   vector<string> prefixes = {""};//for namespaces 
   std::unordered_map<string,vector<string>>* refGraph;
-  std::unordered_map<string,Node*> globals;
+  SymbolTable globals;
+  std::vector<SymbolTable> locals;
+
   string currSym;
   vector<string>* files;
   vector<string>* sources;
@@ -128,6 +131,7 @@ private:
         return (!infunc  && !inloop
      && !inif && !inelif && !inelse && !intry && !incatch);
   }
+  Node* findLocal(const std::string&);
   void parseError(string type,string msg); // for critcal errors that stop the parser from continuing
   Node* minorError(string type,string msg);
   bool addSymRef(string name);
