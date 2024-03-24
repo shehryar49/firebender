@@ -3,3 +3,4 @@ CMakeFiles/
 *.cmake
 lsp
 Makefile
+test.zk
