@@ -9,8 +9,10 @@ LspServer::LspServer()
     #ifdef _WIN32
       out.open("C:\\zuko\\lsp\\out.txt");
     #else
-      out.open("/opt/zuko/lsp/out.txt");
+      out.open("/opt/zuko/lsp/out.txt",ios::app);
+      
     #endif
+
 }
 string LspServer::header_name()
 {
@@ -215,6 +217,7 @@ void LspServer::did_change(JsonObject& json)
         JsonObject& chg = change.asObject();
         if(chg.find("range") != chg.end()) // range specfied
         {
+            cerr << "applying range changes" << endl;
             //apply changes
             string new_text = chg["text"].asStr();
             JsonObject& range = chg["range"].asObject();
