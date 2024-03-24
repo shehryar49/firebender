@@ -836,8 +836,10 @@ Node* Parser::parseExpr(const vector<Token>& tokens)
 
 Node* Parser::parseStmt(vector<Token> tokens)
 {
-if(tokens.size()==0)
-    return minorError("SyntaxError","Invalid Syntax");
+    if(tokens.size() == 1 && (tokens[0].type == L_CURLY_BRACKET_TOKEN || tokens[0].type == R_CURLY_BRACKET_TOKEN))
+      return minorError("SyntaxError","Unknown statement");
+    if(tokens.size()==0)
+        return minorError("SyntaxError","Invalid Syntax");
 //length of tokens is never zero
 if(tokens.size()==1 && (tokens[0].content=="endfunc" || tokens[0].content=="endnm" || tokens[0].content=="endtry" || tokens[0].content=="endcatch" || tokens[0].content=="endfor" || tokens[0].content=="endelse" || tokens[0].content=="endwhile" || tokens[0].content =="endclass" || tokens[0].content=="endelif"  || tokens[0].content=="endif") && tokens[0].type==KEYWORD_TOKEN)
 {
@@ -2200,7 +2202,7 @@ Node* Parser::parse(const vector<Token>& tokens)
             {
             if(!inloop)
             {
-                parseError("SyntaxError","Error use of break or continue not allowed outside loop!");
+                minorError("SyntaxError","Error use of break or continue not allowed outside loop!");
             }
             if(start==0)
             {
@@ -2218,7 +2220,7 @@ Node* Parser::parse(const vector<Token>& tokens)
             {
             if(!infunc)
             {
-                parseError("SyntaxError","Error use of return statement outside functon!");
+                minorError("SyntaxError","Error use of return statement outside functon!");
             }
             if(start==0)
             {
