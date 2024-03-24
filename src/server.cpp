@@ -12,7 +12,7 @@ LspServer::LspServer()
       out.open("/opt/zuko/lsp/out.txt");
     #endif
 }
-string header_name()
+string LspServer::header_name()
 {
     signed char ch;
     string val;
@@ -34,7 +34,7 @@ string header_name()
       return "";
     return val;
 }
-string header_value()
+string LspServer::header_value()
 {
     signed char ch;
     string val;

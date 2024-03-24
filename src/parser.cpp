@@ -2247,7 +2247,7 @@ Node* Parser::parse(const vector<Token>& tokens)
                 }
                 else
                 {
-                    void logLSP(string);
+
                     string tmp = filename;
                     string dir;
                     char path[256];
@@ -2261,15 +2261,13 @@ Node* Parser::parse(const vector<Token>& tokens)
                         dir = dirname(path);
                     #endif
                     
-                    logLSP(filename);
-                    logLSP("Opening file "+str);
+                    
                     FILE* file = fopen(str.c_str(),"r");
                     if(!file)
                     {
                         if(dir != "")
                         {
                             tmp = dir + "/" + str;
-                            logLSP("trying "+tmp);
                             file = fopen(tmp.c_str(),"r");
                         }
                         if(!file)
